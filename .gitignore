@@ -1,6 +1,5 @@
-node_modules/
-npm-debug.log
-dump.rdb
+*.log
+*.rdb
 *.profile
 *.lock
 *.conflict
@@ -11,3 +10,7 @@ dump.rdb
 .idea
 
 *.sublime*
+
+index.js
+/node_modules
+/test

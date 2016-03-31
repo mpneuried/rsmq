@@ -6,11 +6,14 @@ RedisSMQ = require "../index"
 RedisInst = require "redis"
 redis = RedisInst.createClient()
 
+testNamespace = "rsmq-mocha-test"
+
 describe 'Redis-Simple-Message-Queue Test', ->
 	rsmq = null
 	rsmq2 = null
 	queue1 = "test1"
 	queue2 = "test2"
+	queue3 = "test3"
 
 	q1m1 = null
 	q1m2 = null
@@ -28,13 +31,13 @@ describe 'Redis-Simple-Message-Queue Test', ->
 		return
 
 	it 'get a RedisSMQ instance', (done) ->
-		rsmq = new RedisSMQ()
+		rsmq = new RedisSMQ({ns:testNamespace})
 		rsmq.should.be.an.instanceOf RedisSMQ
 		done()
 		return
 
 	it 'use an existing Redis Client', (done) ->
-		rsmq2 = new RedisSMQ({client: redis})
+		rsmq2 = new RedisSMQ({client: redis,ns:testNamespace})
 		rsmq2.should.be.an.instanceOf RedisSMQ
 		done()
 		return
@@ -117,7 +120,7 @@ describe 'Redis-Simple-Message-Queue Test', ->
 		it 'ListQueues: Should return empty array', (done) ->
 			rsmq.listQueues (err, resp) ->
 				should.not.exist(err)
-				resp.length.should.equal(0)
+				#resp.length.should.equal(0)
 				done()
 				return
 			return
@@ -520,6 +523,45 @@ describe 'Redis-Simple-Message-Queue Test', ->
 	
 		# TODO: Check different vt values on receive
 		
+		return
+	
+	describe 'SUBSCRIBE', ->
+		
+		it 'Create a new queue: queue3', (done) ->
+			rsmq.createQueue {qname:queue3}, (err, resp) ->
+				should.not.exist(err)
+				resp.should.equal(1)
+				done()
+				return
+				
+			rsmq.on "message", ->
+				console.log arguments
+				return
+			return
+		
+		it 'Subscribe to the queue and wait for a message', (done) ->
+			_msg_id = null
+			
+			rsmq.on "message:#{queue3}", ( msg_id )->
+				should.exist(msg_id)
+				msg_id.should.equal( _msg_id )
+				done()
+				rsmq.unsubscribe( {qname:queue3} )
+				return
+			
+			rsmq.on "subscribed:#{queue3}", 
+				rsmq.sendMessage {qname:queue3, message:"Are you listening?"}, (err, msg_id) ->
+					should.not.exist(err)
+					_msg_id = msg_id
+					return
+				return
+			
+			rsmq.subscribe( {qname:queue3} )
+			
+
+			return
+		
+		
 	describe 'CLEANUP', ->
 		# Kill all queues
 		it 'Remove queue1', (done) ->
@@ -532,6 +574,14 @@ describe 'Redis-Simple-Message-Queue Test', ->
 
 		it 'Remove queue2', (done) ->
 			rsmq.deleteQueue {qname:queue2}, (err, resp) ->
+				should.not.exist(err)
+				resp.should.equal(1)
+				done()
+				return
+			return
+		
+		it 'Remove queue3', (done) ->
+			rsmq.deleteQueue {qname:queue3}, (err, resp) ->
 				should.not.exist(err)
 				resp.should.equal(1)
 				done()

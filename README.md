@@ -305,6 +305,11 @@ Returns an object:
 Disconnect the redis client.
 This is only useful if you are using rsmq within a script and want node to be able to exit.
 
+## Publish/Subscribe
+
+On every new message the message id will be published to a channel called `{config.ns}{options.qname}:PUB`.
+To make it easier it's also possible to retrieve the channel
+
 ## Changes
 
 see the [CHANGELOG](https://github.com/smrchy/rsmq/blob/master/CHANGELOG.md)

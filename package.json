@@ -8,7 +8,8 @@
 		"node": "> 0.10.20"
 	},
 	"scripts": {
-		"test": "mocha ./test/test.js"
+		"test": "coffee -c index.coffee test/test.coffee; mocha ./test/test.js",
+		"build": "coffee -c index.coffee test/test.coffee"
 	},
 	"dependencies": {
 		"redis": "^2.5.3",

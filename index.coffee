@@ -37,7 +37,7 @@ class RedisSMQ extends EventEmitter
 
 	constructor: (options = {}) ->
 		
-		opts = _.extend
+		@config = _.extend
 			host: "127.0.0.1"
 			port: 6379
 			options: {}
@@ -45,34 +45,9 @@ class RedisSMQ extends EventEmitter
 			ns: "rsmq"
 		, options
 
-		@redisns = opts.ns + ":"
-		if opts.client?.constructor?.name is "RedisClient"
-			@redis = opts.client
-		else
-			@redis = RedisInst.createClient(opts.port, opts.host, opts.options)
-
-		@connected = @redis.connected or false
-
-		# If external client is used it might alrdy be connected. So we check here:
-		if @connected
-			@emit( "connect" )
-			@initScript()
-
-		# Once the connection is up 
-		@redis.on "connect", =>
-			@connected = true
-			@emit( "connect" )
-			@initScript()
-			return
-
-		@redis.on "error", ( err )=>
-			if err.message.indexOf( "ECONNREFUSED" )
-				@connected = false
-				@emit( "disconnect" )
-			else
-				console.error( "Redis ERROR", err )
-				@emit( "error" )
-			return
+		@redisns = @config.ns + ":"
+		
+		@_createRedisClient()
 
 		@_initErrors()
 		return
@@ -80,6 +55,7 @@ class RedisSMQ extends EventEmitter
 	# kill the connection of the redis client, so your node script will be able to exit.
 	quit: =>
 		@redis.quit()
+		@removeAllListeners()
 		return
 
 	_getQueue: (qname, uid, cb) =>
@@ -455,6 +431,82 @@ class RedisSMQ extends EventEmitter
 				return
 			return
 		return
+		
+	subscribe: ( options )=>
+		
+		if @_validate(options, ["qname"],cb) is false
+			return
+			
+		if not @subscriber?
+			_subscriberPrefix = "#{@redisns}PUB:"
+				
+			@subscriber = {}
+			# create a new client
+			_cli = @subscriber = @_createRedisClient( @, @subscriber, true )
+			
+			_cli.psubscribe( "#{_subscriberPrefix}*" )
+			
+			_cli.on "psubscribe", =>
+				
+				return
+			
+			_cli.on "pmessage", ( pattern, channel, uid )=>
+				console.log channel, uid
+				_qname = channel[_subscriberPrefix.length..]
+				@emit( "message", _qname, uid )
+				@emit( "message:#{_qname}", uid )
+				return
+		return
+	
+	unsubscribe: ( options, fn )=>
+		if @_validate(options, ["qname"],cb) is false
+			return
+		console.log "unsub", options
+		if not @subscriber?
+			return
+			
+		_c = @removeListener( "message:#{options.qname}", fn ).listenerCount( "message:#{options.qname}" )
+			
+		console.log "COUNT", _c
+		return
+		
+	_createRedisClient: ( options=@config, context=@, force=false )=>
+		_config = _.extend(
+			host: "127.0.0.1"
+			port: 6379
+			options: {}
+			client: null
+		, options )
+
+		if not force and _config.client?.constructor?.name is "RedisClient"
+			context.redis = _config.client
+		else
+			context.redis = RedisInst.createClient(_config.port, _config.host, _config.options)
+
+		context.connected = context.redis.connected or false
+
+		# If external client is used it might alrdy be connected. So we check here:
+		if context.connected
+			@emit( "connect" )
+			@initScript()
+			return
+
+		# Once the connection is up 
+		context.redis.on "connect", =>
+			context.connected = true
+			@emit( "connect", context.redis )
+			@initScript()
+			return
+
+		context.redis.on "error", ( err )=>
+			if err.message.indexOf( "ECONNREFUSED" )
+				context.connected = false
+				@emit( "disconnect", context.redis )
+			else
+				console.error( "Redis ERROR", err, context.redis )
+				@emit( "error", context.redis )
+			return
+		return context.redis
 
 	_popMessage: (options, q, cb) =>
 		@redis.evalsha @popMessage_sha1, 2, "#{@redisns}#{options.qname}", q.ts, @_handleReceivedMessage(cb)
@@ -491,8 +543,8 @@ class RedisSMQ extends EventEmitter
 				["zadd", "#{@redisns}#{options.qname}", q.ts + options.delay * 1000, q.uid]
 				["hset", "#{@redisns}#{options.qname}:Q", q.uid, options.message]
 				["hincrby", "#{@redisns}#{options.qname}:Q", "totalsent", 1]
+				["publish", "#{@redisns}PUB:#{options.qname}", q.uid]
 			]
-
 			@redis.multi(mc).exec (err, resp) =>
 				if err
 					@_handleError(cb, err)
