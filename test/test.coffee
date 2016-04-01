@@ -534,31 +534,38 @@ describe 'Redis-Simple-Message-Queue Test', ->
 				done()
 				return
 				
-			rsmq.on "message", ->
-				console.log arguments
-				return
 			return
 		
 		it 'Subscribe to the queue and wait for a message', (done) ->
 			_msg_id = null
 			
+			# 3. listen to the message event
 			rsmq.on "message:#{queue3}", ( msg_id )->
 				should.exist(msg_id)
 				msg_id.should.equal( _msg_id )
-				done()
-				rsmq.unsubscribe( {qname:queue3} )
+
+				# 4. unsubscribe from the queue
+				rsmq.unsubscribe {qname:queue3}, ( err )=>
+					should.not.exist(err)
+					return
 				return
 			
-			rsmq.on "subscribed:#{queue3}", 
+			# 1. subscribe to a queue
+			rsmq.subscribe {qname:queue3}, ( err )=>
+				should.not.exist(err)
+
+				# 2. send a message to that queue
 				rsmq.sendMessage {qname:queue3, message:"Are you listening?"}, (err, msg_id) ->
 					should.not.exist(err)
 					_msg_id = msg_id
 					return
 				return
-			
-			rsmq.subscribe( {qname:queue3} )
-			
 
+			# 5. because this is the only subscription the general "unsubscribed" event schould emited
+			rsmq.on "unsubscribed", ->
+				# 6. test done
+				done()
+				return
 			return
 		
 		

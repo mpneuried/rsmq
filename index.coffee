@@ -432,42 +432,81 @@ class RedisSMQ extends EventEmitter
 			return
 		return
 		
-	subscribe: ( options )=>
+	subscribe: ( options, cb )=>
 		
 		if @_validate(options, ["qname"],cb) is false
 			return
 			
 		if not @subscriber?
-			_subscriberPrefix = "#{@redisns}PUB:"
-				
-			@subscriber = {}
-			# create a new client
-			_cli = @subscriber = @_createRedisClient( @, @subscriber, true )
-			
-			_cli.psubscribe( "#{_subscriberPrefix}*" )
-			
-			_cli.on "psubscribe", =>
-				
-				return
-			
-			_cli.on "pmessage", ( pattern, channel, uid )=>
-				console.log channel, uid
-				_qname = channel[_subscriberPrefix.length..]
-				@emit( "message", _qname, uid )
-				@emit( "message:#{_qname}", uid )
-				return
+			@_generalSubscribe()
+
+		# add the queue name to the subscriptions list to be emitted on `pmessage`
+		if options.qname not in @subscriber.subscriptions
+			@subscriber.subscriptions.push options.qname
+
+		_cb = =>
+			@emit "subscribed:#{options.qname}"
+			cb()
+			return
+
+		if @subscriber.subscribed
+			_cb()
+		else
+			@once( "subscribed", _cb )
 		return
-	
-	unsubscribe: ( options, fn )=>
+
+	unsubscribe: ( options, cb )=>
 		if @_validate(options, ["qname"],cb) is false
 			return
-		console.log "unsub", options
+		
 		if not @subscriber?
 			return
+		
+		# remove the queue from the subscriptions list
+		_idx = @subscriber.subscriptions.indexOf( options.qname )
+		if _idx >= 0
+			@subscriber.subscriptions.splice(_idx, 1)
+
+		@removeAllListeners( "message:#{options.qname}" )
+		@emit "unsubscribed:#{options.qname}"
+		cb()
+
+		if @subscriber.subscriptions.length <= 0
+			@_generalUnsubscribe()
+		return
+
+	_generalSubscribe: =>
+		_subscriberPrefix = "#{@redisns}PUB:"
 			
-		_c = @removeListener( "message:#{options.qname}", fn ).listenerCount( "message:#{options.qname}" )
-			
-		console.log "COUNT", _c
+		@subscriber = 
+			subscriptions: []
+			# create a new client
+
+		@subscriber.cli = @_createRedisClient( @, @subscriber, true )
+		
+		@subscriber.cli.on "psubscribe", =>
+			@subscriber.subscribed = true
+			@emit( "subscribed" )
+			return
+		
+		@subscriber.cli.on "pmessage", ( pattern, channel, uid )=>
+			_qname = channel[_subscriberPrefix.length..]
+			@emit( "message", _qname, uid )
+			if _qname in @subscriber.subscriptions
+				@emit( "message:#{_qname}", uid )
+			return
+		
+		@subscriber.cli.psubscribe( "#{_subscriberPrefix}*" )
+		return
+
+	_generalUnsubscribe: =>
+		@subscriber.cli.on "punsubscribe", ( pattern )=>
+			@emit( "unsubscribed" )
+			@subscriber.removeAllListeners()
+			@subscriber.quit()
+			@subscriber = null
+			return
+		@subscriber.cli.punsubscribe()
 		return
 		
 	_createRedisClient: ( options=@config, context=@, force=false )=>

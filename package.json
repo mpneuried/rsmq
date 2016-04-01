@@ -12,16 +12,16 @@
 		"build": "coffee -c index.coffee test/test.coffee"
 	},
 	"dependencies": {
-		"redis": "^2.5.3",
-		"lodash": "^4.6.1"
+		"redis": "2.5.x",
+		"lodash": "4.7.x"
 	},
 	"optionalDependencies": {
 		"hiredis": "^0.4.1"
 	},
 	"devDependencies": {
-		"mocha": "*",
-		"should": "*",
-		"async": "*"
+		"mocha": "2.x",
+		"should": "8.x",
+		"async": "1.x"
 	},
 	"keywords": [
 		"queue",
